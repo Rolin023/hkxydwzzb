@@ -440,6 +440,24 @@
             font-size: 0.9rem;
             color: #856404;
         }
+        
+        .admin-password-section {
+            display: none;
+            margin-top: 15px;
+            padding: 15px;
+            background-color: rgba(199, 0, 11, 0.05);
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .duplicate-warning {
+            background-color: rgba(255, 193, 7, 0.1);
+            border-left: 4px solid #ffc107;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -479,8 +497,7 @@
                                 <p><strong>账号注册限制：</strong></p>
                                 <ul>
                                     <li>每个学院最多可注册 <strong>5</strong> 个账号</li>
-                                    
-                                    
+                                    <li>党委组织部可注册 <strong>6</strong> 个账号（需提供管理员密码）</li>
                                 </ul>
                             </div>
                         </div>
@@ -528,6 +545,13 @@
                             <div class="form-container">
                                 <h2 class="text-center mb-4">党员信息录入</h2>
                                 <div id="submitSuccess" class="success-message" style="display: none;"></div>
+                                
+                                <!-- 重复数据警告 -->
+                                <div class="duplicate-warning" id="duplicateWarning">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                    <strong>警告：</strong>系统中已存在相同姓名和身份证号的党员信息，无法重复添加。
+                                </div>
+                                
                                 <form id="partyMemberForm">
                                     <div class="card">
                                         <div class="card-header">基本信息</div>
@@ -838,6 +862,17 @@
                             </select>
                             <div class="error-message" id="modalRegisterCollegeError"></div>
                         </div>
+                        
+                        <!-- 管理员密码验证部分 -->
+                        <div class="admin-password-section" id="adminPasswordSection">
+                            <div class="mb-3">
+                                <label for="modalRegisterAdminPassword" class="form-label required">管理员密码</label>
+                                <input type="password" class="form-control" id="modalRegisterAdminPassword" placeholder="请输入党委组织部管理员密码">
+                                <div class="error-message" id="modalRegisterAdminPasswordError"></div>
+                                <small class="form-text text-muted">注册党委组织部账号需要提供管理员密码</small>
+                            </div>
+                        </div>
+                        
                         <div class="mb-3">
                             <label for="modalRegisterRealName" class="form-label required">真实姓名</label>
                             <input type="text" class="form-control" id="modalRegisterRealName" placeholder="请输入真实姓名" required>
@@ -970,6 +1005,9 @@
             'default': 5      // 其他学院最多5个账号
         };
         
+        // 党委组织部管理员密码
+        const ADMIN_PASSWORD = 'dwzzb123';
+        
         // 当前用户信息
         let currentUser = null;
         
@@ -1054,6 +1092,24 @@
                 }
             });
             
+            // 部门选择变化事件 - 显示/隐藏管理员密码输入框
+            document.getElementById('modalRegisterCollege').addEventListener('change', function() {
+                const college = this.value;
+                const adminPasswordSection = document.getElementById('adminPasswordSection');
+                
+                if (college === '党委组织部') {
+                    adminPasswordSection.style.display = 'block';
+                } else {
+                    adminPasswordSection.style.display = 'none';
+                    document.getElementById('modalRegisterAdminPassword').value = '';
+                    document.getElementById('modalRegisterAdminPasswordError').textContent = '';
+                }
+            });
+            
+            // 实时检测重复数据
+            document.getElementById('name').addEventListener('input', checkDuplicate);
+            document.getElementById('idCard').addEventListener('input', checkDuplicate);
+            
             // 页面加载时从LeanCloud加载用户数据
             loadUserAccountsFromCloud();
         });
@@ -1091,6 +1147,34 @@
             }
             
             return count < limit;
+        }
+        
+        // 检查重复数据
+        function checkDuplicate() {
+            const name = document.getElementById('name').value;
+            const idCard = document.getElementById('idCard').value;
+            const warningElement = document.getElementById('duplicateWarning');
+            
+            if (!name || !idCard) {
+                warningElement.style.display = 'none';
+                return;
+            }
+            
+            // 构建查询检查重复数据
+            const query = new AV.Query('PartyMember');
+            query.equalTo('name', name);
+            query.equalTo('idCard', idCard);
+            
+            query.first().then(existingMember => {
+                if (existingMember) {
+                    warningElement.style.display = 'block';
+                } else {
+                    warningElement.style.display = 'none';
+                }
+            }).catch(error => {
+                console.error('检查重复数据失败:', error);
+                warningElement.style.display = 'none';
+            });
         }
         
         // 登录功能
@@ -1156,6 +1240,7 @@
             const college = document.getElementById('modalRegisterCollege').value;
             const realName = document.getElementById('modalRegisterRealName').value;
             const phone = document.getElementById('modalRegisterPhone').value;
+            const adminPassword = document.getElementById('modalRegisterAdminPassword').value;
             
             // 清除之前的错误消息
             clearRegisterErrors();
@@ -1197,6 +1282,17 @@
                 const limit = accountLimits[college] || accountLimits['default'];
                 document.getElementById('modalRegisterCollegeError').textContent = `该部门账号数量已达上限（最多${limit}个）`;
                 isValid = false;
+            }
+            
+            // 如果是党委组织部，需要验证管理员密码
+            if (college === '党委组织部') {
+                if (!adminPassword) {
+                    document.getElementById('modalRegisterAdminPasswordError').textContent = '请输入党委组织部管理员密码';
+                    isValid = false;
+                } else if (adminPassword !== ADMIN_PASSWORD) {
+                    document.getElementById('modalRegisterAdminPasswordError').textContent = '管理员密码错误';
+                    isValid = false;
+                }
             }
             
             if (!realName) {
@@ -1243,6 +1339,8 @@
                 document.getElementById('modalRegisterCollege').value = '';
                 document.getElementById('modalRegisterRealName').value = '';
                 document.getElementById('modalRegisterPhone').value = '';
+                document.getElementById('modalRegisterAdminPassword').value = '';
+                document.getElementById('adminPasswordSection').style.display = 'none';
                 
                 // 3秒后关闭模态框
                 setTimeout(() => {
@@ -1263,6 +1361,7 @@
             document.getElementById('modalRegisterCollegeError').textContent = '';
             document.getElementById('modalRegisterRealNameError').textContent = '';
             document.getElementById('modalRegisterPhoneError').textContent = '';
+            document.getElementById('modalRegisterAdminPasswordError').textContent = '';
         }
         
         // 加载学院数据
@@ -1356,26 +1455,39 @@
                 return;
             }
             
-            // 创建LeanCloud对象
-            const PartyMember = AV.Object.extend('PartyMember');
-            const partyMember = new PartyMember();
+            // 检查重复数据
+            const query = new AV.Query('PartyMember');
+            query.equalTo('name', name);
+            query.equalTo('idCard', idCard);
             
-            // 设置属性
-            partyMember.set('name', name);
-            partyMember.set('idCard', idCard);
-            partyMember.set('college', college);
-            partyMember.set('studentId', studentId);
-            partyMember.set('applyDate', new Date(applyDate));
-            partyMember.set('activistDate', new Date(activistDate));
-            partyMember.set('createdBy', currentUser.username);
-            
-            // 保存到LeanCloud
-            partyMember.save().then(() => {
+            query.first().then(existingMember => {
+                if (existingMember) {
+                    alert('系统中已存在相同姓名和身份证号的党员信息，无法重复添加。');
+                    return;
+                }
+                
+                // 创建LeanCloud对象
+                const PartyMember = AV.Object.extend('PartyMember');
+                const partyMember = new PartyMember();
+                
+                // 设置属性
+                partyMember.set('name', name);
+                partyMember.set('idCard', idCard);
+                partyMember.set('college', college);
+                partyMember.set('studentId', studentId);
+                partyMember.set('applyDate', new Date(applyDate));
+                partyMember.set('activistDate', new Date(activistDate));
+                partyMember.set('createdBy', currentUser.username);
+                
+                // 保存到LeanCloud
+                return partyMember.save();
+            }).then(() => {
                 // 显示成功消息
                 showSuccessMessage('党员信息提交成功！', 'submitSuccess');
                 
                 // 清空表单
                 document.getElementById('partyMemberForm').reset();
+                document.getElementById('duplicateWarning').style.display = 'none';
                 
                 // 如果是管理员，刷新数据
                 if (currentUser.isAdmin) {
@@ -1386,7 +1498,11 @@
                 }
             }).catch(error => {
                 console.error('保存失败:', error);
-                alert('提交失败，请稍后重试');
+                if (error.message.includes('重复')) {
+                    alert('系统中已存在相同姓名和身份证号的党员信息，无法重复添加。');
+                } else {
+                    alert('提交失败，请稍后重试');
+                }
             });
         }
         
@@ -1403,6 +1519,7 @@
             // 构建查询
             const query = new AV.Query('PartyMember');
             
+            // 添加查询条件
             if (name) {
                 query.equalTo('name', name);
             }
